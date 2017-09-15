@@ -31,5 +31,3 @@ K = 100; % No. of particles
 
 [x_1, PS_1] = particlefilter(rMat, hMat, K, lam, Qpr, Qobs, randn(Nr,Nx), J*0, G*0);
 
-figure; plot(xMat(:),x_truedec(:),'b.'); hold on
-plot(xMat(:),x_1(:),'g.')
