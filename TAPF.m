@@ -62,7 +62,7 @@ for ii = 1:length(G)
     xb  = xt_p(:,b);
     xc  = xt_p(:,c);
     Im1Mat(:,ii)    = xb.*(Ja*xc);
-    Im2Mat(:,ii)    = G(ii)*(xb.*(Ja*xc));
+    Im2Mat(:,ii)    = G(ii)*Im1Mat(:,ii);
 end
 
 argf    = sum(Im2Mat,2) + ht;

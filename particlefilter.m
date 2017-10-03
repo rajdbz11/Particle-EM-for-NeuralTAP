@@ -1,4 +1,4 @@
-function [xhat, ParticlesAll_AS] = particlefilter(rMat, hMat, K, lam, Qpr, Qobs, U,J,G)
+function [xhat, ParticlesAll_AS, ParticlesAll_BS] = particlefilter(rMat, hMat, K, lam, Qpr, Qobs, U,J,G,useprior)
 
 % Particle filter function specific to the TAP dynamics
 % Implementing the standard SIR filter here
@@ -38,7 +38,19 @@ for tt = 1:T
     for ii = 1:K
         % sampling x(t) from the proposal distribution p(x(t)|x(t-1))
         pNew                = (1-lam)*ParticlesOld(:,ii) + lam*TAPF(ParticlesOld(:,ii),ht,J_p,G);
-        ParticlesNew(:,ii)  = mvnrnd(pNew',Qpr,1)';
+        % ParticlesNew(:,ii)  = mvnrnd(pNew',Qpr,1)';
+        % Changing the proposal distribution to the posterior
+        if useprior
+            Q_post  = inv(inv(Qpr) + U'*inv(Qobs)*U + inv(Qpr/8));
+            mu_post = Q_post*(inv(Qpr)*pNew + U'*inv(Qobs)*rMat(:,tt) + inv(Qpr/8)*0.5*ones(Nx,1));
+        else
+            Q_post  = inv(inv(Qpr) + U'*inv(Qobs)*U);
+            mu_post = Q_post*(inv(Qpr)*pNew + U'*inv(Qobs)*rMat(:,tt));
+        end
+        ParticlesNew(:,ii)  = mvnrnd(mu_post',Q_post,1)';
+        
+       
+        
         % assigning weights to the particles = p(r(t)|x(t))
         mu                  = U*ParticlesNew(:,ii);
         WVec(ii)            = mvnpdf(rMat(:,tt)',mu',Qobs) + 1e-64;

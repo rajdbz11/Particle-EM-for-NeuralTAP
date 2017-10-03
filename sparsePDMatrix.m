@@ -19,5 +19,5 @@ J   = J.*H;
 
 % Make J positive definite
 mineigval   = min(eig(J));
-eps         = 0.1;
+eps         = 1;
 J           = J - diag(mineigval*ones(Nx,1) - eps);
