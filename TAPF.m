@@ -1,4 +1,4 @@
-function [out, argf, Im1Mat, Im2Mat] = TAPF(xt,ht,J_p,G)
+function [out, argf, Im1Mat, Im2Mat, Im3Mat] = TAPF(xt,ht,J_p,G)
 % Function that corresponds to the TAP approximation
 % Inputs: 
 % xt    : latent variable at time t
@@ -53,6 +53,7 @@ end
     
 Im1Mat = zeros(Nx,length(G));
 Im2Mat = zeros(Nx,length(G));
+
         
 for ii = 1:length(G)
     a   = LUT(ii,1)+1;
