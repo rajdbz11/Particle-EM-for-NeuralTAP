@@ -1,4 +1,4 @@
-function [out, argf, Im1Mat, Im2Mat, Im3Mat] = TAPF(xt,ht,J_p,G)
+function [out, argf, Im1Mat, Im2Mat, EtaMat] = TAPF(xt,ht,J_p,G)
 % Function that corresponds to the TAP approximation
 % Inputs: 
 % xt    : latent variable at time t
@@ -53,7 +53,7 @@ end
     
 Im1Mat = zeros(Nx,length(G));
 Im2Mat = zeros(Nx,length(G));
-
+EtaMat = zeros(Nx,Nx,length(G)); %for derivative wrt J
         
 for ii = 1:length(G)
     a   = LUT(ii,1)+1;
@@ -64,7 +64,11 @@ for ii = 1:length(G)
     xc  = xt_p(:,c);
     Im1Mat(:,ii)    = xb.*(Ja*xc);
     Im2Mat(:,ii)    = G(ii)*Im1Mat(:,ii);
+    if ii > 9
+        EtaMat(:,:,ii) = G(ii)*(a-1)*J_p(:,:,a-1).*(xb*xc');
+    end
 end
 
 argf    = sum(Im2Mat,2) + ht;
 out     = sigmoid(argf);
+EtaMat  = sum(EtaMat,3);
