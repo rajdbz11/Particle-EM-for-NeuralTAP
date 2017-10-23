@@ -41,11 +41,13 @@ for tt = 1:T
         % ParticlesNew(:,ii)  = mvnrnd(pNew',Qpr,1)';
         % Changing the proposal distribution to the posterior
         if useprior
-            Q_post  = inv(inv(Qpr) + U'*inv(Qobs)*U + inv(Qpr/8));
-            mu_post = Q_post*(inv(Qpr)*pNew + U'*inv(Qobs)*rMat(:,tt) + inv(Qpr/8)*0.5*ones(Nx,1));
+            Q_post  = inv(inv(Qpr) + U'*(Qobs\U) + inv(Qpr/8));
+            mu_post = Q_post*(Qpr\pNew + U'*(Qobs\rMat(:,tt)) + (Qpr/8)\(0.5*ones(Nx,1)));
         else
-            Q_post  = inv(inv(Qpr) + U'*inv(Qobs)*U);
-            mu_post = Q_post*(inv(Qpr)*pNew + U'*inv(Qobs)*rMat(:,tt));
+            % Q_post  = inv(inv(Qpr) + U'*inv(Qobs)*U);
+            Q_post  = inv(inv(Qpr) + U'*(Qobs\U));
+            % mu_post = Q_post*(inv(Qpr)*pNew + U'*inv(Qobs)*rMat(:,tt));
+            mu_post = Q_post*(Qpr\pNew + U'*(Qobs\rMat(:,tt)));
         end
         ParticlesNew(:,ii)  = mvnrnd(mu_post',Q_post,1)';
         
@@ -53,7 +55,7 @@ for tt = 1:T
         
         % assigning weights to the particles = p(r(t)|x(t))
         mu                  = U*ParticlesNew(:,ii);
-        WVec(ii)            = mvnpdf(rMat(:,tt)',mu',Qobs) + 1e-64;
+        WVec(ii)            = mvnpdf(rMat(:,tt)',mu',Qobs); % + 1e-64;
     end
     
     WVec = WVec/sum(WVec); % Normalizing the weights

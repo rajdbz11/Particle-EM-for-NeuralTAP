@@ -1,4 +1,4 @@
-function [C, dtheta] = NegLogLikelihoodCost(rMat, hMat, P_AS, P_BS, lam, Qpr, Qobs, U, theta)
+function [C, dtheta] = NegLL(rMat, hMat, P_AS, P_BS, lam, Qpr, Qobs, theta)
 
 % Function for computing the Log Likelihood cost for the probabilistic
 % model for the TAP dynamics
@@ -17,11 +17,15 @@ function [C, dtheta] = NegLogLikelihoodCost(rMat, hMat, P_AS, P_BS, lam, Qpr, Qo
 % Output: 
 % Cost C and gradient w.r.t G 
 
-G       = theta(1:27);
-JVec    = theta(28:end);
-J       = JVecToMat(JVec);
+Nr          = size(rMat,1);
+[Nx,K,T]    = size(P_BS);
 
-[Nx,K,T] = size(P_BS);
+
+G       = theta(1:27);
+NJ      = Nx*(Nx+1)/2;
+JVec    = theta(28:27+NJ);
+J       = JVecToMat(JVec);
+U       = reshape(theta(28+NJ:end),Nr,Nx);
 
 
 C1      = 0;
@@ -33,6 +37,7 @@ J_p         = powersofJ(J,2);
 
 dG = G*0;
 dJ = J*0;
+dU = U*0;
 
 for t = 2:T
     
@@ -78,6 +83,8 @@ for t = 2:T
 
 
             dJ = dJ + dJtemp;
+            
+            dU = dU + Qobs\((r_t - U*x_curr)*x_curr');
         
         end
 
@@ -86,14 +93,12 @@ end
 
 C = (C1 + C2)/K; 
 
-% Add L1 constraint
-blah = 100;
-C = C + blah*sum(abs(G));
 
-dG = -dG/K;
-dG = dG + blah*sign(G);
+dG = -dG/K; dG(1:10) = 0; dG(19) = 0;
 
 dJ = -dJ/K;
 
+dU = -dU/K; dU = dU*0;
 
-dtheta = [dG; JMatToVec(dJ)];
+
+dtheta = [dG; JMatToVec(dJ); dU(:)];
