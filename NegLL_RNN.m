@@ -1,4 +1,4 @@
-function [C, dtheta] = NegLL(rMat, hMat, P_AS, P_BS, lam, Qpr, Qobs, theta)
+function [C, dtheta] = NegLL_RNN(rMat, hMat, P_AS, P_BS, lam, Qpr, Qobs, theta)
 
 % Function for computing the Log Likelihood cost for the probabilistic
 % model for the TAP dynamics
@@ -25,7 +25,7 @@ G       = theta(1:27);
 NJ      = Nx*(Nx+1)/2;
 JVec    = theta(28:27+NJ);
 J       = JVecToMat(JVec);
-U       = reshape(theta(28+NJ:end),Nr,Nx);
+V       = reshape(theta(28+NJ:end),Nx,Nr);
 
 
 C1      = 0;
@@ -37,7 +37,7 @@ J_p         = powersofJ(J,2);
 
 dG = G*0;
 dJ = J*0;
-dU = U*0;
+dV = V*0;
 
 for t = 2:T
     
@@ -55,7 +55,9 @@ for t = 2:T
         
         
         C1 = C1 + 0.5*(x_curr - xpred)'*(Qpr\(x_curr - xpred));
-        C2 = C2 + 0.5*(r_t - U*x_curr)'*(Qobs\(r_t - U*x_curr));
+        % C2 = C2 + 0.5*(r_t - U*x_curr)'*(Qobs\(r_t - U*x_curr));
+        C2 = C2 + 0.5*(x_curr - V*r_t)'*(Qobs\(x_curr - V*r_t));
+        
         
         if nargout > 1
         
@@ -84,7 +86,7 @@ for t = 2:T
 
             dJ = dJ + dJtemp;
             
-            dU = dU + Qobs\((r_t - U*x_curr)*x_curr');
+            dV = dV + Qobs\((x_curr - V*r_t)*r_t');
         
         end
 
@@ -94,10 +96,11 @@ end
 C = (C1 + C2)/K; 
 
 
-dG = -dG/K; dG(1:10) = 0; dG(19) = 0; 
+dG = -dG/K; dG(1:10) = 0; dG(19) = 0; % dG = dG*0;
 
-dJ = -dJ/K; 
-dU = -dU/K; 
+dJ = -dJ/K;
+
+dV = -dV/K; % dU = dU*0;
 
 
-dtheta = [dG; JMatToVec(dJ); dU(:)];
+dtheta = [dG; JMatToVec(dJ); dV(:)];

@@ -1,4 +1,4 @@
-function [xhat, ParticlesAll_AS, ParticlesAll_BS] = particlefilter(rMat, hMat, K, lam, Qpr, Qobs, U, J, G)
+function [xhat, ParticlesAll_AS, ParticlesAll_BS] = particlefilterRNN(rMat, hMat, K, lam, Qpr, Qobs, V,J,G)
 
 % Particle filter function specific to the TAP dynamics
 % Implementing the standard SIR filter here
@@ -18,7 +18,7 @@ function [xhat, ParticlesAll_AS, ParticlesAll_BS] = particlefilter(rMat, hMat, K
 % ParticlesAll_AS: set of particles (after resampling) for each time step
 
 [~,T]   = size(rMat);
-Nx      = size(U,2);
+Nx      = size(V,1);
 
 ParticlesAll_BS = zeros(Nx,K,T); % particles before sampling
 ParticlesAll_AS = zeros(Nx,K,T); % particles after sampling
@@ -34,20 +34,25 @@ for tt = 1:T
     ht              = hMat(:,tt);
     ParticlesNew    = zeros(Nx,K);
     WVec            = zeros(K,1);
+    rt              = rMat(:,tt);
     
     for ii = 1:K
         % sampling x(t) from the proposal distribution p(x(t)|x(t-1))
-        pNew    = (1-lam)*ParticlesOld(:,ii) + lam*TAPF(ParticlesOld(:,ii),ht,J_p,G);
-        
+        pNew                = (1-lam)*ParticlesOld(:,ii) + lam*TAPF(ParticlesOld(:,ii),ht,J_p,G);
+        % ParticlesNew(:,ii)  = mvnrnd(pNew',Qpr,1)';
         % Changing the proposal distribution to the posterior
-        Q_post  = inv(inv(Qpr) + U'*(Qobs\U));
-        mu_post = Q_post*(Qpr\pNew + U'*(Qobs\rMat(:,tt)));
         
-        ParticlesNew(:,ii)  = mvnrnd(mu_post',Q_post,1)';
-
+        %Q_post  = inv(inv(Qpr) + U'*(Qobs\U));
+        %mu_post = Q_post*(Qpr\pNew + U'*(Qobs\rt));
+        Q_post = inv(inv(Qpr) + inv(Qobs));
+        mu_post = Q_post*(Qpr\pNew + Qobs\(V*rt));
+        
+        ParticlesNew(:,ii)  = mvnrnd(mu_post',Q_post,1)'; 
+        
         % assigning weights to the particles = p(r(t)|x(t))
-        mu          = U*ParticlesNew(:,ii);
-        WVec(ii)    = mvnpdf(rMat(:,tt)',mu',Qobs) + 1e-64;
+        mu                  = ParticlesNew(:,ii);
+        %WVec(ii)            = mvnpdf(rMat(:,tt)',mu',Qobs) + 1e-64;
+        WVec(ii) = exp(-0.5*(mu - V*rt)'*(Qobs\(mu - V*rt))) + 1e-64;
     end
     
     WVec = WVec/sum(WVec); % Normalizing the weights

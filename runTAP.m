@@ -1,4 +1,4 @@
-function [xMat, rMat] = runTAP(x0, hMat, lam, Qpr, Qobs, U, J, G)
+function [xMat, rMat,sigmoidinputs] = runTAP(x0, hMat, lam, Qpr, Qobs, U, J, G)
 % Function that generates the TAP dynamics
 
 % Inputs: 
@@ -21,13 +21,18 @@ Nx  = length(x0);
 xMat = zeros(Nx,T);
 xold = x0;
 
+sigmoidinputs = [];
+
 for tt = 1:T
     
     ht          = hMat(:,tt); 
-    xnew        = (1-lam)*xold + lam*TAPF(xold,ht,J_p,G); % Low pass filtering done here
+    [out, argf] = TAPF(xold,ht,J_p,G);
+    % xnew        = (1-lam)*xold + lam*TAPF(xold,ht,J_p,G); % Low pass filtering done here
+    xnew        = (1-lam)*xold + lam*out; % Low pass filtering done here
+    
     xMat(:,tt)  = xnew + mvnrnd(zeros(1,Nx),Qpr,1)'; % Adding process noise at each time step
     xold        = xnew;
-    
+    sigmoidinputs = [sigmoidinputs; argf];
 end
 
 Nr = size(U,1);
