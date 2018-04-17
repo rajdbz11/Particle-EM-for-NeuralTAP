@@ -1,79 +1,92 @@
-function [xhat, ParticlesAll_AS, ParticlesAll_BS] = particlefilter(rMat, hMat, K, lam, Qpr, Qobs, U, J, G)
+function [xhat, ParticlesAll, WVec, ESSVec] = particlefilter(rMat, hMat, K, lam, P, M, U, J, G)
 
 % Particle filter function specific to the TAP dynamics
-% Implementing the standard SIR filter here
+% Type of particle filter: standard SIR filter
+
 % Inputs: 
 % rMat  : observations r(t)
 % hMat  : inputs h(t)
 % K     : No. of particles
 % lam   : low pass filtering constant for the TAP dynamics
-% Qpr   :covariance of process noise
-% Qobs  :covariance of observation noise
+% P     :covariance of process noise
+% M     :covariance of observation noise
 % U     :embedding matrix, r = Ux + noise
 % J     :coupling matrix
 % G     :global hyperparameters
 
 % Ouputs:
 % xhat  : decoded latent variables xhat(t)
-% ParticlesAll_AS: set of particles (after resampling) for each time step
+% ParticlesAll: set of particles for all time steps
+
 
 [~,T]   = size(rMat);
 Nx      = size(U,2);
+J_p     = powersofJ(J,2);
 
-ParticlesAll_BS = zeros(Nx,K,T); % particles before sampling
-ParticlesAll_AS = zeros(Nx,K,T); % particles after sampling
-
+ParticlesAll    = zeros(Nx,K,T+1);
 ParticlesOld    = rand(Nx,K); % initialize particles
-% Drawing from a uniform distribution here, because we know that x E (0,1)
+ParticlesAll(:,:,1) = ParticlesOld;
 
+WVec    = ones(K,1)/K;
+ESSVec  = zeros(T,1);
 
-J_p = powersofJ(J,2);
+Pinv    = inv(P);
+Q_postinv  = Pinv + U'*(M\U);
+Q_post = inv(Q_postinv);
 
 for tt = 1:T
-    
+ 
     ht              = hMat(:,tt);
+    rt              = rMat(:,tt);
     ParticlesNew    = zeros(Nx,K);
-    WVec            = zeros(K,1);
+    Minvr           = (M\rt);
+    rMinvr          = rt'*Minvr;
+    UMinvr          = U'*Minvr;
     
-    for ii = 1:K
-        % sampling x(t) from the proposal distribution p(x(t)|x(t-1))
-        pNew    = (1-lam)*ParticlesOld(:,ii) + lam*TAPF(ParticlesOld(:,ii),ht,J_p,G);
+    for k = 1:K
+        % sampling x(t) from the proposal distribution p(x(t)|x(t-1), r(t))
+        % p(x(t)|x(t-1),r(t)) = 1/Z*p(x(t)|x(t-1))*p(r(t)|x(t))
         
-        % Changing the proposal distribution to the posterior
-        Q_post  = inv(inv(Qpr) + U'*(Qobs\U));
-        mu_post = Q_post*(Qpr\pNew + U'*(Qobs\rMat(:,tt)));
+        out = TAPF(ParticlesOld(:,k),ht,J_p,G);
         
-        ParticlesNew(:,ii)  = mvnrnd(mu_post',Q_post,1)';
+        f_tap    = (1-lam)*ParticlesOld(:,k) + lam*out;
+        Pinvf_tap = P\f_tap; 
+        
+        v = Pinvf_tap + UMinvr;
+        mu_post = Q_postinv\v; % mean of the proposal distribution
+        
+        % draw a sample from this proposal distribution
+        ParticlesNew(:,k)  = mvnrnd(mu_post',Q_post,1)';
 
-        % assigning weights to the particles = p(r(t)|x(t))
-        mu          = U*ParticlesNew(:,ii);
-        WVec(ii)    = mvnpdf(rMat(:,tt)',mu',Qobs) + 1e-64;
+        % assigning weights to the particles proportional to p(r(t)|x(t-1))
+        w_ii = exp(-0.5*(rMinvr + f_tap'*Pinvf_tap - v'*mu_post));
+        WVec(k)    = WVec(k)*w_ii; 
+        
     end
     
-    WVec = WVec/sum(WVec); % Normalizing the weights
+    ParticlesAll(:,:,tt+1) = ParticlesNew;
     
-    ParticlesAll_BS(:,:,tt) = ParticlesNew;
-    
-    % Now to resample the particles by drawing samples from a multinomial
-    % distribution with parameters WVec
-    % NVec(ii) = no. of children on particle ii 
-    NVec        = mnrnd(K,WVec)'; 
-    
-    ParticlesRS = [];
-    
-    for ii = 1:K
-        if NVec(ii) ~= 0
-            repP        = repmat(ParticlesNew(:,ii),1,NVec(ii));
-            ParticlesRS = [ParticlesRS, repP];
-        end
+    WVec = WVec/sum(WVec); % Normalize the weights
+    if isnan(sum(WVec))
+        keyboard;
     end
     
 
-    ParticlesAll_AS(:,:,tt) = ParticlesRS;
-    ParticlesOld            = ParticlesRS;
-        
+    % Resample the particles based on their weights
     
+    ESS = 1/sum(WVec.^2);
+    ESSVec(tt) = ESS;
+    
+    if ESS < K/2 && tt ~= T
+        idx = resampleSystematic(WVec);
+        ParticlesAll(:,:,1:tt+1) = ParticlesAll(:,idx,1:tt+1);
+        WVec = ones(K,1)/K;
+    end
+
+    ParticlesOld = ParticlesAll(:,:,tt+1);
+ 
+            
 end
 
-xhat = mean(ParticlesAll_AS,2);
-xhat = reshape(xhat,Nx,T);
+xhat = mean(ParticlesAll,2);
+xhat = reshape(xhat,Nx,T+1);

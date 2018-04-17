@@ -1,40 +1,40 @@
-function [xMat, rMat,sigmoidinputs] = runTAP(x0, hMat, lam, Qpr, Qobs, U, J, G)
+function [xMat, rMat, sigmoidinputs] = runTAP(x0, hMat, lam, Qpr, Qobs, U, J, G)
+
 % Function that generates the TAP dynamics
 
 % Inputs: 
-% x0    :latent variables at time t = 0
-% hMat  :of size Nx x T, specifies h(t) for t = 1,..,T
-% lam   :low pass fitlering constant for TAP dynamics
-% Qpr   :covariance of process noise
-% Qobs  :covariance of observation noise
-% U     :embedding matrix, r = Ux + noise
-% J     :coupling matrix
-% G     :global hyperparameters
+% x0    : latent variables at time t = 0
+% hMat  : of size Nx x T, specifies inputs h(t) for t = 1,..,T
+% lam   : low pass fitlering constant for TAP dynamics
+% Qpr   : covariance of process noise
+% Qobs  : covariance of measurement noise
+% U     : embedding matrix for neural activity
+% J     : coupling matrix of the underlying distribution
+% G     : global hyperparameters
 
-% Outputs: xMat: latent variables, rMat: neural activity
+% Outputs: 
+% xMat  : latent variables 
+% rMat  : neural activity. r = Ux + noise
+% sigmoidinputs: argument of the sigmoid for each time step
 
-% Constants and initializations
-T   = size(hMat,2);
-J_p = powersofJ(J,2);
-Nx  = length(x0);
 
-xMat = zeros(Nx,T);
-xold = x0;
+T    = size(hMat,2);    % no. of time steps
+Nx   = length(x0);      % no. of latent variables
+Nr   = size(U,1);       % no. of neurons
 
-sigmoidinputs = [];
+J_p  = powersofJ(J,2);  % element-wise powers of the J matrix
+xold = x0;              % initial value of x
 
-for tt = 1:T
-    
+xMat            = zeros(Nx,T);     
+sigmoidinputs   = zeros(Nx,T); 
+
+for tt = 1:T  
     ht          = hMat(:,tt); 
     [out, argf] = TAPF(xold,ht,J_p,G);
-    % xnew        = (1-lam)*xold + lam*TAPF(xold,ht,J_p,G); % Low pass filtering done here
-    xnew        = (1-lam)*xold + lam*out; % Low pass filtering done here
-    
-    xMat(:,tt)  = xnew + mvnrnd(zeros(1,Nx),Qpr,1)'; % Adding process noise at each time step
+    xnew        = (1-lam)*xold + lam*out;               % Low pass filter 
+    xMat(:,tt)  = xnew + mvnrnd(zeros(1,Nx),Qpr,1)';    % Add process noise 
     xold        = xnew;
-    sigmoidinputs = [sigmoidinputs; argf];
+    sigmoidinputs(:,tt) = argf;
 end
-
-Nr = size(U,1);
 
 rMat = U*xMat + mvnrnd(zeros(1,Nr),Qobs,T)'; % Adding independent observation noise to each time step

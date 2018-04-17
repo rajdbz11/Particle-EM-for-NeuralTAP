@@ -1,9 +1,14 @@
 function [out, argf, Im1Mat, Im2Mat, EtaMat] = TAPF(xt,ht,J_p,G)
-% Function that corresponds to the TAP approximation
+
+% Function that implements the TAP (Thouless Anderson Palmer) approximation
+% The coefficients G that correspond to the TAP approximation are: 
+% G   = [2,0,0,0,0,0,0,0,0,4,-4,0,-8,8,0,2,2]'; 
+% This function however can take as input arbitrary coefficients G
+
 % Inputs: 
 % xt    : latent variable at time t
 % ht    : input at time t
-% J_G   : elementwise powers of the coupling matrix; i.e., Jij,Jij^2, ..
+% J_G   : elementwise powers of J; i.e., 1, Jij,Jij^2, ..
 % G     : global hyperparameters 
 
 % Outputs:
@@ -43,7 +48,9 @@ LUT = ...
      2     2     1
      2     2     2];
  
-% Here we are assuming the indices a,b,c in G_abc are in {0,1,2}
+% Here we are assuming the indices of G_abc take values: 
+% a in {1,2} and b,c in {0,1,2}
+
 xt_p = ones(Nx,3); 
 
 for ii = 1:2
@@ -56,17 +63,15 @@ Im2Mat = zeros(Nx,length(G));
 EtaMat = zeros(Nx,Nx,length(G)); %for derivative wrt J
         
 for ii = 1:length(G)
-    a   = LUT(ii,1)+1;
-    b   = LUT(ii,2)+1;
-    c   = LUT(ii,3)+1;
+    a   = LUT(ii+9,1)+1;
+    b   = LUT(ii+9,2)+1;
+    c   = LUT(ii+9,3)+1;
     Ja  = J_p(:,:,a);
     xb  = xt_p(:,b);
     xc  = xt_p(:,c);
     Im1Mat(:,ii)    = xb.*(Ja*xc);
     Im2Mat(:,ii)    = G(ii)*Im1Mat(:,ii);
-    if ii > 9
-        EtaMat(:,:,ii) = G(ii)*(a-1)*J_p(:,:,a-1).*(xb*xc');
-    end
+    EtaMat(:,:,ii) = G(ii)*(a-1)*J_p(:,:,a-1).*(xb*xc');  
 end
 
 argf    = sum(Im2Mat,2) + ht;

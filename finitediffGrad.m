@@ -4,7 +4,7 @@ function grad = finitediffGrad(fun,X)
 grad = zeros(length(X),1);
 y0 = fun(X);
 
-h = 1e-8;
+h = 1e-4;
 
 for k = 1:length(X)
     X1 = X;
