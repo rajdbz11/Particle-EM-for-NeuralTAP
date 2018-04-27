@@ -88,5 +88,5 @@ for tt = 1:T
             
 end
 
-xhat = mean(ParticlesAll,2);
-xhat = reshape(xhat,Nx,T+1);
+xhat = bsxfun(@times,ParticlesAll,repmat(reshape(WVec,1,K),Nx,1));
+xhat = reshape(sum(xhat,2),Nx,T+1);

@@ -2,7 +2,8 @@ function [out, argf, Im1Mat, Im2Mat, EtaMat] = TAPF(xt,ht,J_p,G)
 
 % Function that implements the TAP (Thouless Anderson Palmer) approximation
 % The coefficients G that correspond to the TAP approximation are: 
-% G   = [2,0,0,0,0,0,0,0,0,4,-4,0,-8,8,0,2,2]'; 
+% G   = [0,2,0,0,0,0,0,0,0,0,4,-4,0,-8,8,0,0,0]';
+% G   = [2,4,-4,-8,8]; % reduced parameter case
 % This function however can take as input arbitrary coefficients G
 
 % Inputs: 
@@ -61,17 +62,39 @@ end
 Im1Mat = zeros(Nx,length(G));
 Im2Mat = zeros(Nx,length(G));
 EtaMat = zeros(Nx,Nx,length(G)); %for derivative wrt J
-        
-for ii = 1:length(G)
-    a   = LUT(ii+9,1)+1;
-    b   = LUT(ii+9,2)+1;
-    c   = LUT(ii+9,3)+1;
-    Ja  = J_p(:,:,a);
-    xb  = xt_p(:,b);
-    xc  = xt_p(:,c);
-    Im1Mat(:,ii)    = xb.*(Ja*xc);
-    Im2Mat(:,ii)    = G(ii)*Im1Mat(:,ii);
-    EtaMat(:,:,ii) = G(ii)*(a-1)*J_p(:,:,a-1).*(xb*xc');  
+
+if length(G) == 5
+    ReducedG = 1;
+else
+    ReducedG = 0;
+end
+
+if (ReducedG)
+    idx = [2,11,12,14,15];
+    for kk = 1:length(idx)
+        ii = idx(kk);
+        a   = LUT(ii+9,1)+1;
+        b   = LUT(ii+9,2)+1;
+        c   = LUT(ii+9,3)+1;
+        Ja  = J_p(:,:,a);
+        xb  = xt_p(:,b);
+        xc  = xt_p(:,c);
+        Im1Mat(:,kk)   = xb.*(Ja*xc);
+        Im2Mat(:,kk)   = G(kk)*Im1Mat(:,kk);
+        EtaMat(:,:,kk) = G(kk)*(a-1)*J_p(:,:,a-1).*(xb*xc');  
+    end    
+else
+    for ii = 1:length(G)
+        a   = LUT(ii+9,1)+1;
+        b   = LUT(ii+9,2)+1;
+        c   = LUT(ii+9,3)+1;
+        Ja  = J_p(:,:,a);
+        xb  = xt_p(:,b);
+        xc  = xt_p(:,c);
+        Im1Mat(:,ii)   = xb.*(Ja*xc);
+        Im2Mat(:,ii)   = G(ii)*Im1Mat(:,ii);
+        EtaMat(:,:,ii) = G(ii)*(a-1)*J_p(:,:,a-1).*(xb*xc');  
+    end
 end
 
 argf    = sum(Im2Mat,2) + ht;

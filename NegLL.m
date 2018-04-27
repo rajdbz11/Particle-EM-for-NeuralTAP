@@ -1,4 +1,4 @@
-function [C, dtheta] = NegLL(rMat, hMat, P_S, WVec, lam, P, M, theta)
+function [C, dtheta] = NegLL(rMat, hMat, P_S, WVec, lam, P, M, RG, theta)
 
 % Function for computing the Log Likelihood cost for the probabilistic
 % model for the TAP dynamics
@@ -8,8 +8,9 @@ function [C, dtheta] = NegLL(rMat, hMat, P_S, WVec, lam, P, M, theta)
 % P_S   : Particles trajectories
 % WVec  : Weights of the particles trajectories
 % lam   : low pass filtering constant for the TAP dynamics
-% P     :covariance of process noise
-% M     :covariance of measurement noise
+% P     : covariance of process noise
+% M     : covariance of measurement noise
+% RG    : indicates whether G is of reduced size or not
 % theta : parameter vector with the following subcomponents
 % G     :global hyperparameters 
 % J     :coupling matrix
@@ -23,12 +24,19 @@ function [C, dtheta] = NegLL(rMat, hMat, P_S, WVec, lam, P, M, theta)
 Nx      = size(P_S,1); % No. of latent variables
 K       = size(P_S,2); % No. of particles
 
+
+if RG % this parameter tells us if we are using a restricted set of Gs or the full set 
+    lG = 5;
+else
+    lG = 18;
+end
+
 % Extract the required parameters
-G       = mv(theta(1:18));
+G       = mv(theta(1:lG));
 NJ      = Nx*(Nx+1)/2;
-JVec    = theta(19:18+NJ);
+JVec    = theta(lG+1:lG+NJ);
 J       = JVecToMat(JVec);
-U       = reshape(theta(19+NJ:end),Nr,Nx);
+U       = reshape(theta(lG+1+NJ:end),Nr,Nx);
 
 J_p     = powersofJ(J,2);
 

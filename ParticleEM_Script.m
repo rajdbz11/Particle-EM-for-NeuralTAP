@@ -1,17 +1,18 @@
 % Script for Inferring TAP Inference from neural activity using Particle EM
 
 % Set noise seed
+close all;
 noise_seed = randi(2000);
 rng(noise_seed); 
 
 % ----------------------- Initialize parameters ---------------------------
 
-Nx  = 3;     % No. of variables
-Nr  = 4;    % No. of neurons
-T   = 50;    % No. of time steps
+Nx  = 5;     % No. of variables
+Nr  = Nx+1;  % No. of neurons
+T   = 30;    % No. of time steps
 Nh  = 10;    % No. of time steps for which h is the same
-Ns  = 10;    % No. of batches
-lam = 0.25;  % low pass filtering constant for the TAP dynamics
+Ns  = 40;    % No. of batches
+lam = 0.25;   % low pass filtering constant for the TAP dynamics
 
 % Noise covariances
 Qpr     = 1e-5*eye(Nx); % process noise
@@ -20,9 +21,17 @@ Qobs    = 4e-4*eye(Nr); % measurement noise
 % True TAP brain parameters
 Jtype   = 'ferr';
 J       = 3*Create_J(Nx, 0.1, Jtype, 0); % Coupling matrix
-G       = [0,2,0,0,0,0,0,0,0,0,4,-4,0,-8,8,0,0,0]'; % G_TAP
+G       = [2,4,-4,-8,8]';
+% G       = [2,0,0,0,0]';
+% G       = [0,2,0,0,0,0,0,0,0,0,4,-4,0,-8,8,0,0,0]'; % G_TAP
 U       = randn(Nr,Nx); % Embedding matrix
 
+lG      = length(G);
+if lG == 5
+    RG = 1; %indicates whether we are using a reduced size for G or not
+else
+    RG = 0;
+end
 
 % ---------- Generate the latent dynamics and observations ----------------
 
@@ -47,7 +56,7 @@ end
 
 % Compare the dynamics with and without the coupling J
 figure; 
-subplot(1,2,1); plot(xMat','b'); hold on; plot(xMat_zeroJ','r'); 
+subplot(1,2,1); plot(xMat','b.-'); hold on; plot(xMat_zeroJ','r.-'); 
 axis([0,T,0,1]); title('blue with J, red: J=0'); xlabel('t'); ylabel('x_i(t)')
 
 subplot(1,2,2);
@@ -64,7 +73,7 @@ xMatFull = temp; clear temp;
 
 K = 100; % No. of particles
 
-Qpr     = 2e-4*eye(Nx); % assumed process noise
+Qpr     = 4e-4*eye(Nx); % assumed process noise
 Qobs    = 1e-3*eye(Nr); % assumed measurement noise
 
 x_truedec = zeros(Nx,T+1,Ns);
@@ -83,15 +92,16 @@ theta           = [G; JMatToVec(J); U(:)];
 
 CtrueVec = zeros(Ns,1);
 
+tic;
 for s = 1:Ns
-    CtrueVec(s) = NegLL(rMatFull(:,:,s), hMatFull(:,:,s), P_truedec(:,:,:,s), WMat(:,s), lam, Qpr, Qobs, theta);
+    CtrueVec(s) = NegLL(rMatFull(:,:,s), hMatFull(:,:,s), P_truedec(:,:,:,s), WMat(:,s), lam, Qpr, Qobs, RG, theta);
 end
-
+toc;
 
 % ----------- Now we try to learn the parameters from data using PF-EM ----
 
-U_1 = reshape(rMatFull,Nr,T*Ns)*pinv(sigmoid(reshape(hMatFull,Nx,T*Ns)));
-G_1 = randn(18,1);
+U_1 = reshape(rMatFull,Nr,T*Ns)*pinv(sigmoid(reshape(hMatFull,Nx,T*Ns))) + 0.25*randn(Nr,Nx);
+G_1 = randn(5,1);
 J_1 = Create_J(Nx, 0.05, Jtype, 0);
 
 
@@ -112,16 +122,17 @@ C_1Vec = zeros(Ns,1);
 
 tic;
 for s = 1:Ns
-    C_1Vec(s) = NegLL(rMatFull(:,:,s), hMatFull(:,:,s), P_1(:,:,:,s), W_1(:,s), lam, Qpr, Qobs, theta_1);
+    C_1Vec(s) = NegLL(rMatFull(:,:,s), hMatFull(:,:,s), P_1(:,:,:,s), W_1(:,s), lam, Qpr, Qobs, RG, theta_1);
 end
 toc;
 
 % Plot the true vs decoded latents and neural responses
-figure; plot(mv(xMatFull(:,2:end,:)),mv(x_truedec(:,2:end,:)),'k.')
-hold on; plot(mv(xMatFull(:,2:end,:)),mv(x_1(:,2:end,:)),'b.')
+st = 4; % start plotting from this time
+figure; plot(mv(xMatFull(:,st:end,:)),mv(x_truedec(:,st:end,:)),'k.')
+hold on; plot(mv(xMatFull(:,st:end,:)),mv(x_1(:,st:end,:)),'b.')
 
-figure; plot(mv(rMatFull(:,2:end,:)),mv(r_truedec(:,2:end,:)),'k.')
-hold on; plot(mv(rMatFull(:,2:end,:)),mv(r_1(:,2:end,:)),'b.')
+figure; plot(mv(rMatFull(:,st:end,:)),mv(r_truedec(:,st:end,:)),'k.')
+hold on; plot(mv(rMatFull(:,st:end,:)),mv(r_1(:,st:end,:)),'b.')
 
 
 Cinit = C_1Vec;
@@ -134,11 +145,12 @@ Uinit = U_1;
 
 % ---------------------------- EM iterations ------------------------------
 
-EMIters = 100;
+EMIters = 10;
 CostEM = zeros(EMIters,1);
+CMat   = zeros(Ns,ceil(EMIters/25));
 
 % options for unconstrained minimization
-options = optimoptions(@fminunc,'Display','iter','Algorithm','quasi-newton','tolX',1e-3,'MaxFunEvals',100,'GradObj','on','TolFun',1e-3,'MaxIter',50);
+options = optimoptions(@fminunc,'Display','iter','Algorithm','quasi-newton','tolX',1e-4,'MaxFunEvals',300,'GradObj','on','TolFun',1e-4,'MaxIter',300);
 NJ      = Nx*(Nx+1)/2;
 
 % % options for constrained minimization
@@ -168,14 +180,24 @@ for iterem = 1:EMIters
     
     theta_1 = [G_1; JMatToVec(J_1); U_1(:)];
     
-    fun     = @(theta_1)NegLL(rB, hB, P_B, WB, lam, Qpr, Qobs, theta_1);
+    fun     = @(theta_1)NegLL(rB, hB, P_B, WB, lam, Qpr, Qobs, RG, theta_1);
     
     [theta_1, CostEM(iterem)] = fminunc(fun,theta_1,options);
     % [theta_1, CostEM(iterem)] = fmincon(fun,theta_1,[],[],Aeq,beq,lb,ub,[],options);
     
-    G_1     = theta_1(1:18);
-    J_1     = JVecToMat(theta_1(19:18+NJ));
-    U_1     = reshape(theta_1(19+NJ:end),Nr,Nx);
+    G_1     = theta_1(1:lG);
+    J_1     = JVecToMat(theta_1(lG+1:lG+NJ));
+    U_1     = reshape(theta_1(lG+1+NJ:end),Nr,Nx);
+    
+    
+    if mod(iterem,25) == 0
+        for s = 1:Ns
+            [x_1(:,:,s), P_1(:,:,:,s), W_1(:,s), temp] ...
+                = particlefilter(rMatFull(:,:,s), hMatFull(:,:,s), K, lam, Qpr, Qobs, U_1, J_1, G_1);
+            r_1(:,:,s) = U_1*x_1(:,2:end,s);
+            CMat(s,iterem/25) = NegLL(rMatFull(:,:,s), hMatFull(:,:,s), P_1(:,:,:,s), W_1(:,s), lam, Qpr, Qobs, RG, theta_1);
+        end
+    end
     
     % Pick a new batch and run the particle filter with the updated parameters
     
@@ -186,37 +208,61 @@ for iterem = 1:EMIters
     [~, P_B, WB] = particlefilter(rB, hB, K, lam, Qpr, Qobs, U_1, J_1, G_1);   
 end
 
-% Run the PF on the full data set using the estimated parameters
-for s = 1:Ns
-    [x_1(:,:,s), P_1(:,:,:,s), W_1(:,s), temp] ...
-        = particlefilter(rMatFull(:,:,s), hMatFull(:,:,s), K, lam, Qpr, Qobs, U_1, J_1, G_1);
-    r_1(:,:,s) = U_1*x_1(:,2:end,s);
-    C_1Vec(s) = NegLL(rMatFull(:,:,s), hMatFull(:,:,s), P_1(:,:,:,s), W_1(:,s), lam, Qpr, Qobs, theta_1);
-end
-
+figure; 
+plot(Cinit,'bx-')
+hold on
+plot(CMat,'bx-')
+plot(CMat(:,end),'cx-')
+plot(CtrueVec,'kx-')
 
 % plot the result
-figure(2); plot(mv(xMatFull(:,2:end,:)),mv(x_1(:,2:end,:)),'c.')
-figure(3); plot(mv(rMatFull(:,2:end,:)),mv(r_1(:,2:end,:)),'c.')
+figure(2); plot(mv(xMatFull(:,st:end,:)),mv(x_1(:,st:end,:)),'c.')
+figure(3); plot(mv(rMatFull(:,st:end,:)),mv(r_1(:,st:end,:)),'c.')
 
 
-% % compute the hessian
-% % compute using only one batch for now
-% 
-% % first using the true parameters
-% % Pick the batch
-% idx     = 1;
-% rB      = rMatFull(:,:,idx); % pick the observations for the mini batch
-% hB      = hMatFull(:,:,idx); 
-% 
-% P_B     = P_truedec(:,:,:,idx);
-% WB      = WMat(:,idx);
-% fun     = @(theta)NegLL(rB, hB, P_B, WB, lam, Qpr, Qobs, theta);
-% Htrue   = finitediffHess(fun,theta);
-% 
-% 
-% % compute hessian using parameters obtained after running EM
-% P_B     = P_1(:,:,:,idx);
-% WB      = W_1(:,idx);
-% fun     = @(theta_1)NegLL(rB, hB, P_B, WB, lam, Qpr, Qobs, theta_1);
-% H_1     = finitediffHess(fun,theta_1);
+% ------------   compute the hessian --------------------------------------
+% compute using only one batch for now
+
+% first using the true parameters
+% Pick the batch
+idx     = 1;
+rB      = rMatFull(:,:,idx); % pick the observations for the mini batch
+hB      = hMatFull(:,:,idx); 
+
+P_B     = P_truedec(:,:,:,idx);
+WB      = WMat(:,idx);
+fun     = @(theta)NegLL(rB, hB, P_B, WB, lam, Qpr, Qobs, RG, theta);
+tic;
+Htrue   = finitediffHess(fun,theta);
+toc;
+
+% compute hessian using parameters obtained after running EM
+P_B     = P_1(:,:,:,idx);
+WB      = W_1(:,idx);
+fun     = @(theta_1)NegLL(rB, hB, P_B, WB, lam, Qpr, Qobs, RG, theta_1);
+H_1     = finitediffHess(fun,theta_1);
+
+[V,D] = eig(Htrue);
+[V1, D1] = eig(H_1);
+
+figure; semilogy(diag(D),'kx-'); 
+hold on
+semilogy(diag(D1),'bx-'); 
+grid on
+title('eigenvalues of the hessian of cost function; evaluated at')
+legend('true params','estimated params');
+
+% plot the 6 of the eigenvectors
+figure; 
+for k = 1:6
+    subplot(2,3,k);
+    plot(V(:,k),'kx-'); 
+    hold on
+    plot(V1(:,k),'bx-');
+    grid on
+    titlestr = [num2str(k,1),', ',num2str(D(k,k),2), ', ', num2str(D1(k,k),2)];
+    title(titlestr)
+    if k == 1
+        legend('true params','estimated params');
+    end
+end
