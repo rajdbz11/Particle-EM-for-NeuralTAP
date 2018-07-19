@@ -5,7 +5,7 @@ H = zeros(N,N);
 
 f0 = fun(X);
 
-dx = 1e-3;
+dx = 1e-2;
 
 for ii = 1:N
     for jj = 1:ii

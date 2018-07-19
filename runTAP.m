@@ -1,4 +1,4 @@
-function [xMat, rMat, sigmoidinputs] = runTAP(x0, hMat, lam, Qpr, Qobs, U, J, G)
+function [xMat, rMat] = runTAP(x0, hMat, lam, Qpr, Qobs, U, J, G, nltype)
 
 % Function that generates the TAP dynamics
 
@@ -15,26 +15,28 @@ function [xMat, rMat, sigmoidinputs] = runTAP(x0, hMat, lam, Qpr, Qobs, U, J, G)
 % Outputs: 
 % xMat  : latent variables 
 % rMat  : neural activity. r = Ux + noise
-% sigmoidinputs: argument of the sigmoid for each time step
 
 
 T    = size(hMat,2);    % no. of time steps
 Nx   = length(x0);      % no. of latent variables
 Nr   = size(U,1);       % no. of neurons
 
-J_p  = powersofJ(J,2);  % element-wise powers of the J matrix
 xold = x0;              % initial value of x
 
-xMat            = zeros(Nx,T);     
-sigmoidinputs   = zeros(Nx,T); 
+xMat = zeros(Nx,T);     
+
+J2   = J.^2;
+
+TAPFn = @(x,ht)(nonlinearity( ht + G(1)*J*x + G(2)*J2*x + G(3)*J2*(x.^2) + G(4)*x.*(J2*x) + G(5)*x.*(J2*(x.^2)), nltype));
+
 
 for tt = 1:T  
     ht          = hMat(:,tt); 
-    [out, argf] = TAPF(xold,ht,J_p,G);
-    xnew        = (1-lam)*xold + lam*out;               % Low pass filter 
-    xMat(:,tt)  = xnew + mvnrnd(zeros(1,Nx),Qpr,1)';    % Add process noise 
+    out         = TAPFn(xold,ht);
+    xnew        = (1-lam)*xold + lam*out + mvnrnd(zeros(1,Nx),Qpr,1)'; % Low pass filter and add process noise
+    % xMat(:,tt)  = xnew + mvnrnd(zeros(1,Nx),Qpr,1)';    % Add process noise 
+    xMat(:,tt)  = xnew;      % Add process noise 
     xold        = xnew;
-    sigmoidinputs(:,tt) = argf;
 end
 
 rMat = U*xMat + mvnrnd(zeros(1,Nr),Qobs,T)'; % Adding independent observation noise to each time step

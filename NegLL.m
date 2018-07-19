@@ -1,4 +1,4 @@
-function [C, dtheta] = NegLL(rMat, hMat, P_S, WVec, lam, P, M, RG, theta)
+function [C, dtheta] = NegLL(rMat, hMat, P_S, WVec, lam, P, M, RG, nltype, theta)
 
 % Function for computing the Log Likelihood cost for the probabilistic
 % model for the TAP dynamics
@@ -38,7 +38,9 @@ JVec    = theta(lG+1:lG+NJ);
 J       = JVecToMat(JVec);
 U       = reshape(theta(lG+1+NJ:end),Nr,Nx);
 
-J_p     = powersofJ(J,2);
+J2      = J.^2;
+
+Argfn = @(x,ht)( ht + G(1)*J*x + G(2)*J2*x + G(3)*J2*(x.^2) + G(4)*x.*(J2*x) + G(5)*x.*(J2*(x.^2)) );
 
 % two components of the cost
 C1      = 0;
@@ -49,63 +51,77 @@ dG = G*0;
 dJ = J*0;
 dU = U*0;
 
+
 for t = 1:T % think about including the first time step also
     
     r_t     = rMat(:,t);
     ht      = hMat(:,t);
+    x_old   = P_S(:,:,t);
+    x_curr  = P_S(:,:,t+1);
+    farg    = Argfn(x_old,ht);
+    [fx, dfx] = nonlinearity(farg,nltype);
+    x_pred  = (1-lam)*x_old + lam*fx;
+    dx      = x_curr - x_pred;
+    dr      = r_t - U*x_curr;
     
-    for k = 1:K
+    % update the cost
+    C1      = C1 + 0.5*sum(dx.*(P\dx))*WVec;
+    C2      = C2 + 0.5*sum(dr.*(M\dr))*WVec;
+    
+    if nargout > 1
         
-        x_old  = P_S(:,k,t);
-        x_curr = P_S(:,k,t+1);
+        % gradient for U
+        dU      = dU - (M\dr)*(WVec.*x_curr'); 
 
-        [out, argf, Im1Mat, ~, EtaMat] = TAPF(x_old, ht, J_p, G);
-        xpred  = (1-lam)*x_old + lam*out; %Prediction based on the old particles
-        
-        
-        C1 = C1 + 0.5*WVec(k)*(x_curr - xpred)'*(P\(x_curr - xpred));
-        C2 = C2 + 0.5*WVec(k)*(r_t - U*x_curr)'*(M\(r_t - U*x_curr));
-        
-        if nargout > 1
-        
-            sigder      = sigmoid(argf).*(1 - sigmoid(argf));
-            repsigder   = repmat(sigder,1,length(G));
+        % gradient for G
+        Im1     = lam*(P\dx).*(WVec').*dfx;
+        x_old2  = x_old.^2;
 
-            temp        = lam*(x_curr - xpred)'*(P\(repsigder.*Im1Mat));
-            dG          = dG + WVec(k)*temp';
+        dG(1)   = dG(1) - sum(sum(Im1.*(J*x_old))); 
+        dG(2)   = dG(2) - sum(sum(Im1.*(J2*x_old))); 
+        dG(3)   = dG(3) - sum(sum(Im1.*(J2*x_old2))); 
+        dG(4)   = dG(4) - sum(sum(Im1.*(x_old.*(J2*x_old)))); 
+        dG(5)   = dG(5) - sum(sum(Im1.*(x_old.*(J2*x_old2)))); 
 
-            dJtemp = J*0;
+        % gradient for J 
+        for ii = 1:Nx
+            for jj = 1:ii
+                dA = zeros(Nx,K);
+                if ii == jj
+                    dA(ii,:) = G(1)*x_old(ii,:) + ...
+                         2*J(ii,ii)*( G(2)*x_old(ii,:) + (G(3) + G(4))*x_old2(ii,:) +  G(5)*(x_old(ii,:).^3));
+                    % dA(ii,:) = 0;
+                else
+                    dA(ii,:) = G(1)*x_old(jj,:) + ...
+                        2*J(ii,jj)*( G(2)*x_old(jj,:) + G(3)*x_old2(jj,:) + ...
+                        G(4)*(x_old(ii,:).*x_old(jj,:)) +  G(5)*(x_old(ii,:).*x_old2(jj,:)) );
 
-            for ii = 1:Nx
-                for jj = 1:ii
-                    df = zeros(Nx,1);
-                    if ii == jj
-                        % df(ii) = sigder(ii)*EtaMat(ii,ii);
-                        df(ii) = 0;
-                    else
-                        df(ii) = sigder(ii)*EtaMat(ii,jj);
-                        df(jj) = sigder(jj)*EtaMat(jj,ii);
-                    end
-                    dJtemp(ii,jj) = lam*(x_curr - xpred)'*(P\df);
+                    dA(jj,:) = G(1)*x_old(ii,:) + ...
+                        2*J(ii,jj)*( G(2)*x_old(ii,:) + G(3)*x_old2(ii,:) + ...
+                        G(4)*(x_old(jj,:).*x_old(ii,:)) +  G(5)*(x_old(jj,:).*x_old2(ii,:)) );
                 end
+                dJ(ii,jj) = dJ(ii,jj) - sum(sum(Im1.*dA));
             end
-
-
-
-            dJ = dJ + WVec(k)*dJtemp;
-            
-            dU = dU + WVec(k)*(M\((r_t - U*x_curr)*x_curr'));
-        
         end
-
+    
     end
+    
+
 end
 
-C  = C1 + C2; 
 
-dG = -dG;
-dJ = -dJ; 
-dU = -dU; 
+C = C1 + C2;
 
+% Add L1 norm of J and L2 norm of G
+a1 = 0;
+a2 = 0;
+C = C + a1*sum(G.^2) + a2*sum(abs(JMatToVec(J)));
 
-dtheta = [dG; JMatToVec(dJ); dU(:)];
+% Add gradient of L1 norm of J
+dJ = dJ + a2*sign(J);
+dJ = JMatToVec(dJ);
+
+% Add gradient of L2 norm of G
+dG = dG + a1*2*G;
+
+dtheta  = [dG; dJ; dU(:)];
