@@ -1,4 +1,4 @@
-function [xhat, ParticlesAll, WVec, ESSVec] = particlefilter(rMat, hMat, K, lam, P, M, U, J, G, nltype)
+function [ LL, xhat, ParticlesAll, WVec, ESSVec] = particlefilter(rMat, hMat, K, lam, P, M, RG, theta, nltype)
 
 % Particle filter function specific to the TAP dynamics
 % Type of particle filter: standard SIR filter
@@ -10,22 +10,40 @@ function [xhat, ParticlesAll, WVec, ESSVec] = particlefilter(rMat, hMat, K, lam,
 % lam   : low pass filtering constant for the TAP dynamics
 % P     : covariance of process noise
 % M     : covariance of observation noise
+% theta : parameter vector which contains G J and U
 % U     : embedding matrix, r = Ux + noise
 % J     : coupling matrix
 % G     : global hyperparameters
 % nltype: nonlinearity used in the TAP dynamics
 
 % Ouputs:
+% LL    : data log likelihood
 % xhat  : decoded latent variables xhat(t)
 % ParticlesAll: set of particles for all time steps
+% WVec  : weights of the particles
+% ESSVec: Effective sample size at each time
 
 
-[~,T]   = size(rMat);
-Nx      = size(U,2);
+[Nr,T]   = size(rMat);
+Nx      = size(P,2);
+
+if RG % this parameter tells us if we are using a restricted set of Gs or the full set 
+    lG = 5;
+else
+    lG = 18;
+end
+
+% Extract the required parameters
+G       = mv(theta(1:lG));
+NJ      = Nx*(Nx+1)/2;
+JVec    = theta(lG+1:lG+NJ);
+J       = JVecToMat(JVec);
+U       = reshape(theta(lG+1+NJ:end),Nr,Nx);
 J2      = J.^2;
 
 ParticlesAll = zeros(Nx,K,T+1);
-ParticlesOld = rand(Nx,K); % initialize particles
+% ParticlesOld = rand(Nx,K); % initialize particles
+ParticlesOld = pinv(U)*rMat(:,1) + mvnrnd(zeros(1,Nx),P,K)';
 
 ParticlesAll(:,:,1) = ParticlesOld;
 
@@ -39,6 +57,8 @@ Q_post = inv(Q_postinv);
 Q_post = (Q_post + Q_post')/2; %just to ensure it is perfectly symmetric (numerical errors creepy)
 
 TAPFn = @(x,ht)(nonlinearity( ht + G(1)*J*x + G(2)*J2*x + G(3)*J2*(x.^2) + G(4)*x.*(J2*x) + G(5)*x.*(J2*(x.^2) ), nltype));
+
+LL = 0; %log likelihood log(p(r))
 
 for tt = 1:T
     
@@ -63,6 +83,8 @@ for tt = 1:T
     % assigning weights to the particles proportional to p(r(t)|x(t-1))
     w_ii = exp(-0.5*( rMinvr + sum(f_tap.*Pinvf_tap - v.*mu_post)' )) + 1e-128; %adding a small constant to avoid nan problem
     WVec = WVec.*w_ii; 
+    
+    LL = LL + log(sum(WVec));
     
     ParticlesAll(:,:,tt+1) = ParticlesNew;
     
