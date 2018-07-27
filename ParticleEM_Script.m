@@ -7,17 +7,17 @@ rng(noise_seed);
 
 % ----------------------- Initialize parameters ---------------------------
 
-Nx  = 5;     % No. of variables
+Nx  = 10;     % No. of variables
 Nr  = 2*Nx;  % No. of neurons
-T   = 50;    % No. of time steps
-Nh  = 10;    % No. of time steps for which h is the same
-Ns  = 50;    % No. of batches
+T   = 600;    % No. of time steps
+Nh  = 5;    % No. of time steps for which h is the same
+Ns  = 1;    % No. of batches
 lam = 0.25;  % low pass filtering constant for the TAP dynamics
 
 nltype = 'sigmoid'; % external nonlinearity in TAP dynamics
 
 % Noise covariances
-Qpr     = 1e-5*eye(Nx); % process noise
+Qpr     = 1e-4*eye(Nx); % process noise
 Qobs    = 4e-4*eye(Nr); % measurement noise
 
 % True TAP model parameters
@@ -25,7 +25,7 @@ Jtype   = 'nonferr';
 sc_J    = 1;
 J       = 3*Create_J(Nx, 0.25, Jtype, sc_J); % Coupling matrix
 G       = [2,4,-4,-8,8]';   % reduced parameter set  % G = [0,2,0,0,0,0,0,0,0,0,4,-4,0,-8,8,0,0,0]';
-U       = 2*randn(Nr,Nx);   % Embedding matrix
+U       = 0.5*randn(Nr,Nx);   % Embedding matrix
 
 lG      = length(G);
 if lG == 5
@@ -73,9 +73,6 @@ xMatFull = temp; clear temp;
 
 K = 100; % No. of particles
 
-% Qpr     = 4e-4*eye(Nx); % assumed process noise
-% Qobs    = 1e-3*eye(Nr); % assumed measurement noise
-
 x_truedec = zeros(Nx,T+1,Ns);
 r_truedec = zeros(Nr,T,Ns);
 P_truedec = zeros(Nx,K,T+1,Ns);
@@ -104,7 +101,8 @@ toc;
 
 % ----------- Now we try to learn the parameters from data using PF-EM ----
 
-U_1 = reshape(rMatFull,Nr,T*Ns)*pinv(sigmoid(reshape(hMatFull,Nx,T*Ns))); % + 0.25*randn(Nr,Nx);
+% U_1 = reshape(rMatFull,Nr,T*Ns)*pinv(sigmoid(reshape(hMatFull,Nx,T*Ns))); % + 0.25*randn(Nr,Nx);
+U_1 = 0.1*randn(Nr,Nx);
 G_1 = 0.1*randn(5,1);
 J_1 = Create_J(Nx, 0.05, Jtype, sc_J);
 
@@ -151,7 +149,7 @@ Uinit = U_1;
 
 % ---------------------------- EM iterations ------------------------------
 
-EMIters = 20*Ns;
+EMIters = 100*Ns;
 CostEM = zeros(EMIters,1);
 CMat   = zeros(Ns,ceil(EMIters/Ns));
 LMat   = zeros(Ns,ceil(EMIters/Ns));
