@@ -1,4 +1,4 @@
-function [C, dtheta] = NegLL(rMat, hMat, P_S, WVec, lam, P, M, RG, nltype, theta)
+function [C, dtheta] = NegLL(rMat, hMat, P_S, WVec, P, M, RG, nltype, computegrad, theta)
 
 % Function for computing the Log Likelihood cost for the probabilistic
 % model for the TAP dynamics
@@ -11,10 +11,18 @@ function [C, dtheta] = NegLL(rMat, hMat, P_S, WVec, lam, P, M, RG, nltype, theta
 % P     : covariance of process noise
 % M     : covariance of measurement noise
 % RG    : indicates whether G is of reduced size or not
+% nltype: external nonlinearity for TAP dynamics 
 % theta : parameter vector with the following subcomponents
 % G     :global hyperparameters 
 % J     :coupling matrix
 % U     :embedding matrix, r = Ux + noise
+% V     :embedding of input
+% computegrad: specifies which variables to compute gradient for
+% computegrad(1): G
+% computegrad(2): J
+% computegrad(3): U
+% computegrad(4): V
+% computegrad(5): lam
 
 
 % Output: 
@@ -23,6 +31,7 @@ function [C, dtheta] = NegLL(rMat, hMat, P_S, WVec, lam, P, M, RG, nltype, theta
 [Nr, T] = size(rMat);  % No. of neurons and time steps
 Nx      = size(P_S,1); % No. of latent variables
 K       = size(P_S,2); % No. of particles
+Nh      = size(hMat,1); % input dimension
 
 
 if RG % this parameter tells us if we are using a restricted set of Gs or the full set 
@@ -32,15 +41,19 @@ else
 end
 
 % Extract the required parameters
+lam     = theta(1);
+theta   = theta(2:end);
+
 G       = mv(theta(1:lG));
 NJ      = Nx*(Nx+1)/2;
 JVec    = theta(lG+1:lG+NJ);
 J       = JVecToMat(JVec);
-U       = reshape(theta(lG+1+NJ:end),Nr,Nx);
+U       = reshape(theta(lG+1+NJ:lG+NJ+Nr*Nx),Nr,Nx);
+V       = reshape(theta(lG+NJ+Nr*Nx+1:end),Nx,Nh);
 
 J2      = J.^2;
 
-Argfn = @(x,ht)( ht + G(1)*J*x + G(2)*J2*x + G(3)*J2*(x.^2) + G(4)*x.*(J2*x) + G(5)*x.*(J2*(x.^2)) );
+Argfn = @(x,ht)( V*ht + G(1)*J*x + G(2)*J2*x + G(3)*J2*(x.^2) + G(4)*x.*(J2*x) + G(5)*x.*(J2*(x.^2)) );
 
 % two components of the cost
 C1      = 0;
@@ -50,6 +63,8 @@ C2      = 0;
 dG = G*0;
 dJ = J*0;
 dU = U*0;
+dV = V*0;
+dlam = 0;
 
 
 for t = 1:T % think about including the first time step also
@@ -71,18 +86,34 @@ for t = 1:T % think about including the first time step also
     if nargout > 1
         
         % gradient for U
+        if computegrad(3)
         dU      = dU - (M\dr)*(WVec.*x_curr'); 
+        end
 
-        % gradient for G
         Im1     = lam*(P\dx).*(WVec').*dfx;
+        
+        % gradient for V
+        if computegrad(4)
+        dV      = dV - Im1*repmat(ht',K,1);
+        end
+        
+        % gradient for lam
+        if computegrad(5)
+            dlam = dlam - sum((P\dx).*(fx-x_old))*WVec;
+        end
+        
+        % gradient for G
         x_old2  = x_old.^2;
-
+        
+        if computegrad(1)
         dG(1)   = dG(1) - sum(sum(Im1.*(J*x_old))); 
         dG(2)   = dG(2) - sum(sum(Im1.*(J2*x_old))); 
         dG(3)   = dG(3) - sum(sum(Im1.*(J2*x_old2))); 
         dG(4)   = dG(4) - sum(sum(Im1.*(x_old.*(J2*x_old)))); 
         dG(5)   = dG(5) - sum(sum(Im1.*(x_old.*(J2*x_old2)))); 
-
+        end
+        
+        if computegrad(2)
         % gradient for J 
         for ii = 1:Nx
             for jj = 1:ii
@@ -103,6 +134,8 @@ for t = 1:T % think about including the first time step also
                 dJ(ii,jj) = dJ(ii,jj) - sum(sum(Im1.*dA));
             end
         end
+        end
+        
     
     end
     
@@ -124,4 +157,4 @@ dJ = JMatToVec(dJ);
 % Add gradient of L2 norm of G
 dG = dG + a1*2*G;
 
-dtheta  = [dG; dJ; dU(:)];
+dtheta  = [dlam; dG; dJ; dU(:); dV(:)];

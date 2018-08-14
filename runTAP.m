@@ -1,4 +1,4 @@
-function [xMat, rMat] = runTAP(x0, hMat, lam, Qpr, Qobs, U, J, G, nltype)
+function [xMat, rMat] = runTAP(x0, hMat, lam, Qpr, Qobs, U, V, J, G, nltype)
 
 % Function that generates the TAP dynamics
 
@@ -8,7 +8,8 @@ function [xMat, rMat] = runTAP(x0, hMat, lam, Qpr, Qobs, U, J, G, nltype)
 % lam   : low pass fitlering constant for TAP dynamics
 % Qpr   : covariance of process noise
 % Qobs  : covariance of measurement noise
-% U     : embedding matrix for neural activity
+% U     : embedding matrix from latent space to neural activity
+% V     : emedding matrix from input space to latent variable space
 % J     : coupling matrix of the underlying distribution
 % G     : global hyperparameters
 
@@ -27,7 +28,7 @@ xMat = zeros(Nx,T);
 
 J2   = J.^2;
 
-TAPFn = @(x,ht)(nonlinearity( ht + G(1)*J*x + G(2)*J2*x + G(3)*J2*(x.^2) + G(4)*x.*(J2*x) + G(5)*x.*(J2*(x.^2)), nltype));
+TAPFn = @(x,ht)(nonlinearity( V*ht + G(1)*J*x + G(2)*J2*x + G(3)*J2*(x.^2) + G(4)*x.*(J2*x) + G(5)*x.*(J2*(x.^2)), nltype));
 
 
 for tt = 1:T  

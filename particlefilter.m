@@ -1,4 +1,4 @@
-function [ LL, xhat, ParticlesAll, WVec, ESSVec] = particlefilter(rMat, hMat, K, lam, P, M, RG, theta, nltype)
+function [ LL, xhat, ParticlesAll, WVec, ESSVec] = particlefilter(rMat, hMat, K, P, M, RG, theta, nltype)
 
 % Particle filter function specific to the TAP dynamics
 % Type of particle filter: standard SIR filter
@@ -12,6 +12,7 @@ function [ LL, xhat, ParticlesAll, WVec, ESSVec] = particlefilter(rMat, hMat, K,
 % M     : covariance of observation noise
 % theta : parameter vector which contains G J and U
 % U     : embedding matrix, r = Ux + noise
+% V     : input embedding matrix
 % J     : coupling matrix
 % G     : global hyperparameters
 % nltype: nonlinearity used in the TAP dynamics
@@ -26,6 +27,7 @@ function [ LL, xhat, ParticlesAll, WVec, ESSVec] = particlefilter(rMat, hMat, K,
 
 [Nr,T]   = size(rMat);
 Nx      = size(P,2);
+Nh      = size(hMat,1);
 
 if RG % this parameter tells us if we are using a restricted set of Gs or the full set 
     lG = 5;
@@ -34,11 +36,15 @@ else
 end
 
 % Extract the required parameters
+lam     = theta(1);
+theta   = theta(2:end);
 G       = mv(theta(1:lG));
 NJ      = Nx*(Nx+1)/2;
 JVec    = theta(lG+1:lG+NJ);
 J       = JVecToMat(JVec);
-U       = reshape(theta(lG+1+NJ:end),Nr,Nx);
+U       = reshape(theta(lG+1+NJ:lG+NJ+Nr*Nx),Nr,Nx);
+V       = reshape(theta(lG+NJ+Nr*Nx+1:end),Nx,Nh);
+
 J2      = J.^2;
 
 ParticlesAll = zeros(Nx,K,T+1);
@@ -56,7 +62,7 @@ Q_post = inv(Q_postinv);
 
 Q_post = (Q_post + Q_post')/2; %just to ensure it is perfectly symmetric (numerical errors creepy)
 
-TAPFn = @(x,ht)(nonlinearity( ht + G(1)*J*x + G(2)*J2*x + G(3)*J2*(x.^2) + G(4)*x.*(J2*x) + G(5)*x.*(J2*(x.^2) ), nltype));
+TAPFn = @(x,ht)(nonlinearity( V*ht + G(1)*J*x + G(2)*J2*x + G(3)*J2*(x.^2) + G(4)*x.*(J2*x) + G(5)*x.*(J2*(x.^2) ), nltype));
 
 LL = 0; %log likelihood log(p(r))
 
